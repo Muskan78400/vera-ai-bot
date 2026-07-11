@@ -1,0 +1,117 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Vera Merchant AI Operator Dashboard</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700;800&family=Plus+Jakarta+Sans:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body class="dark-mode">
+  <div class="glass-bg"></div>
+  
+  <header class="app-header">
+    <div class="logo-area">
+      <div class="logo-orb"></div>
+      <div class="logo-text">
+        <h1>New Vera 2.0</h1>
+        <span>Upgraded Merchant AI Engine</span>
+      </div>
+    </div>
+    <div class="system-status">
+      <div class="status-indicator online"></div>
+      <span id="uptime-display">Uptime: 00:00:00</span>
+    </div>
+  </header>
+
+  <main class="dashboard-grid">
+    <!-- Row 1: Metrics Overview -->
+    <section class="metrics-row">
+      <div class="metric-card">
+        <div class="metric-icon category-icon"></div>
+        <div class="metric-val" id="count-category">0</div>
+        <div class="metric-label">Categories Loaded</div>
+      </div>
+      <div class="metric-card">
+        <div class="metric-icon merchant-icon"></div>
+        <div class="metric-val" id="count-merchant">0</div>
+        <div class="metric-label">Merchants Synced</div>
+      </div>
+      <div class="metric-card">
+        <div class="metric-icon customer-icon"></div>
+        <div class="metric-val" id="count-customer">0</div>
+        <div class="metric-label">Customers Active</div>
+      </div>
+      <div class="metric-card">
+        <div class="metric-icon trigger-icon"></div>
+        <div class="metric-val" id="count-trigger">0</div>
+        <div class="metric-label">Triggers Tracked</div>
+      </div>
+    </section>
+
+    <!-- Row 2: Double Column Console -->
+    <section class="console-row">
+      <!-- Left Column: Activity Logs & Conversations -->
+      <div class="panel glass-card scroll-panel flex-col">
+        <div class="panel-header">
+          <h2>Activity Console</h2>
+          <div class="badge glow-purple">Live Feed</div>
+        </div>
+        <div class="panel-body logs-container" id="logs-feed">
+          <div class="log-entry system">Initializing stream...</div>
+        </div>
+      </div>
+
+      <!-- Right Column: Interactive Sandbox Debugger -->
+      <div class="panel glass-card flex-col">
+        <div class="panel-header">
+          <h2>Composition Sandbox</h2>
+          <span class="panel-subtitle">Test trigger composition manually</span>
+        </div>
+        <div class="panel-body debugger-area">
+          <div class="form-group">
+            <label for="sandbox-merchant">Select Merchant</label>
+            <select id="sandbox-merchant" class="styled-select">
+              <option value="">No merchants loaded yet</option>
+            </select>
+          </div>
+
+          <div class="form-group">
+            <label for="sandbox-trigger">Select Trigger Type</label>
+            <select id="sandbox-trigger" class="styled-select">
+              <option value="research_digest">Research Digest Release (external)</option>
+              <option value="recall_due">Recall Due (customer-facing)</option>
+              <option value="perf_dip">Performance Dip (internal)</option>
+              <option value="ipl_match_today">IPL Match Day (external)</option>
+              <option value="hostile">Hostile / Opt-out (reply test)</option>
+            </select>
+          </div>
+
+          <button id="run-sandbox-btn" class="glow-button">Simulate Composition</button>
+
+          <div class="sandbox-result-area">
+            <h3>Output Message Preview</h3>
+            <div class="preview-box" id="preview-output">
+              <span class="placeholder-text">Outputs will appear here after simulation...</span>
+            </div>
+            
+            <h3>Rationale & Diagnostics</h3>
+            <div class="preview-box code-style" id="preview-diagnostics">
+              <span class="placeholder-text">Diagnostics details...</span>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <footer class="app-footer">
+    <div class="engine-meta" id="engine-meta-text">Loading metadata...</div>
+    <div class="copyright">magicpin AI Challenge Submissions</div>
+  </footer>
+
+  <script src="app.js"></script>
+</body>
+</html>
