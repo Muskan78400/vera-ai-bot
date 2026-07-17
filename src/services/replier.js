@@ -23,38 +23,62 @@ const OPT_OUT_KEYWORDS = [
   'leave me alone',
 ];
 
-const OUT_OF_SCOPE_SYSTEM_PROMPT = `You are the reply handler for Vera, magicpin's merchant assistant.
-Given the conversation history and the merchant's latest message, analyze the response.
+const MAX_BODY_CHARS = 320;
 
-Classify the merchant's intent into one of these:
-1. OPT_OUT: Merchant wants to stop, is angry, or says "stop/spam".
+const OUT_OF_SCOPE_SYSTEM_PROMPT = `You are the reply handler for Vera, magicpin's merchant assistant.
+Given the conversation history, who sent the latest message (merchant or customer), and that
+message itself, analyze the response.
+
+Classify the sender's intent into one of these:
+1. OPT_OUT: Sender wants to stop, is angry, or says "stop/spam".
 2. AUTO_REPLY: It's an automated business responder message.
-3. COMMITMENT: Merchant agreed, said "lets do it", "go ahead", "what's next", or "yes".
-4. OUT_OF_SCOPE: Merchant asks a curveball question (e.g. GST filing, personal tasks).
-5. ENGAGED: Merchant asks a relevant question or wants to continue.
+3. COMMITMENT: Sender agreed, said "lets do it", "go ahead", "what's next", "yes", or (for a
+   customer) confirmed a concrete slot/booking detail.
+4. OUT_OF_SCOPE: Sender asks a curveball question unrelated to the current conversation (e.g.
+   GST filing, unrelated personal tasks, requests Vera has no grounded info to answer).
+5. ENGAGED: Sender asks a relevant, on-topic question (including technical/domain questions from
+   a merchant, e.g. equipment, compliance, or operational details) or wants to continue.
+
+When from_role is "merchant" and the message is a technical/operational question (e.g. equipment
+setup, compliance, procedure), your "body" MUST engage with the specific technical content asked
+about, grounded only in the categorySlug/activeOffers context provided — never a generic
+acknowledgement like "Understood" or "Let me know how you'd like to proceed" with nothing else.
+If you don't have enough grounded information to answer the technical specifics, say so plainly
+and offer the one concrete next step (e.g. "I don't have your equipment specs on file — can you
+share the model number so I log it correctly?").
+
+Keep "body" under 320 characters.
 
 Response Format:
 Return ONLY a valid JSON block containing:
 {
   "intent": "OPT_OUT" | "AUTO_REPLY" | "COMMITMENT" | "OUT_OF_SCOPE" | "ENGAGED",
-  "body": "The text response to send. If intent is OPT_OUT, keep it empty or apologize. If intent is COMMITMENT, draft the next action step directly (e.g. 'Great. Here is the draft post...'). Do NOT ask questions like 'would you', 'do you', or 'can you tell' in COMMITMENT mode; instead present the confirmation/action directly using words like 'draft', 'confirm', 'proceed'.",
+  "body": "The text response to send. If intent is OPT_OUT, keep it empty or apologize. If intent is COMMITMENT, draft the next action step directly (e.g. 'Great. Here is the draft post...'). Do NOT ask questions like 'would you', 'do you', or 'can you tell' in COMMITMENT mode; instead present the confirmation/action directly using words like 'draft', 'confirm', 'proceed'. If intent is OUT_OF_SCOPE, politely decline and redirect to what Vera can actually help with — do not attempt to answer it.",
   "action": "send" | "wait" | "end",
   "wait_seconds": 0,
   "rationale": "Reasoning for classification and text composition"
 }`;
 
+function capLength(text) {
+  if (!text) return text;
+  if (text.length <= MAX_BODY_CHARS) return text;
+  return text.slice(0, MAX_BODY_CHARS - 1).trimEnd() + '…';
+}
+
 /**
- * Main reply router for handling merchant messages.
+ * Main reply router for handling merchant or customer messages.
  */
-export async function handleReply(conversationId, merchantId, customerId, message, turnNumber) {
+export async function handleReply(conversationId, merchantId, customerId, fromRole, message, turnNumber) {
   const cleanMessage = message.trim().toLowerCase();
+  const senderRole = fromRole === 'customer' ? 'customer' : 'merchant';
+
   let session = await store.getConversation(conversationId);
   if (!session) {
     session = await store.createConversation(conversationId, merchantId, customerId, null, 'vera');
   }
 
-  // Track message history
-  await store.addMessage(conversationId, 'merchant', message);
+  // Track message history under the real sender role, not a hardcoded one
+  await store.addMessage(conversationId, senderRole, message);
 
   // Heuristic 1: Detect explicit opt-out/hostility
   if (OPT_OUT_KEYWORDS.some((kw) => cleanMessage.includes(kw))) {
@@ -103,16 +127,21 @@ export async function handleReply(conversationId, merchantId, customerId, messag
   const category = merchant ? await store.getContext('category', merchant.category_slug) : null;
   const customer = customerId ? await store.getContext('customer', customerId) : null;
 
-  // Build conversation transcript context
+  // Build conversation transcript context, labeling each side correctly
   const historyText = (session.messages || [])
-    .map((m) => `${m.role === 'merchant' ? 'Merchant' : 'Vera'}: ${m.body}`)
+    .map((m) => {
+      const label = m.role === 'merchant' ? 'Merchant' : m.role === 'customer' ? 'Customer' : 'Vera';
+      return `${label}: ${m.body}`;
+    })
     .join('\n');
 
   const userPrompt = JSON.stringify({
+    fromRole: senderRole,
     merchantName: merchant?.identity?.name,
     ownerName: merchant?.identity?.owner_first_name,
     categorySlug: merchant?.category_slug,
     activeOffers: merchant?.offers?.filter((o) => o.status === 'active').map((o) => o.title) || [],
+    customerName: customer?.identity?.name,
     conversationHistory: historyText,
     latestMessage: message,
   });
@@ -137,7 +166,12 @@ export async function handleReply(conversationId, merchantId, customerId, messag
     } else if (classification.intent === 'AUTO_REPLY') {
       action = 'wait';
       wait_seconds = 14400;
+    } else if (classification.intent === 'OUT_OF_SCOPE' && !body) {
+      action = 'send';
+      body = "That's outside what I can help with here — I'll flag it for the team. Happy to keep going on this conversation in the meantime.";
     }
+
+    body = capLength(body);
 
     if (action === 'send' && body) {
       await store.addMessage(conversationId, session.sendAs, body);
@@ -153,17 +187,33 @@ export async function handleReply(conversationId, merchantId, customerId, messag
     const isCommitment =
       cleanMessage.includes('do it') || cleanMessage.includes('go ahead') || cleanMessage.includes('yes');
     if (isCommitment) {
+      const body = capLength('Great. Let us proceed with the next draft. Confirm when ready.');
+      await store.addMessage(conversationId, session.sendAs, body);
       return {
         action: 'send',
-        body: 'Great. Let us proceed with the next draft. Confirm when ready.',
+        body,
         rationale: 'Fallback: detected commitment keywords, advanced to draft execution.',
       };
     }
 
+    // This path only fires if the LLM call itself failed (bad API key/model,
+    // network, rate limit, malformed JSON) — not a real classification. Avoid
+    // the old blind "Understood, let me know" reply: at minimum, acknowledge
+    // that a specific/technical ask was made rather than brushing it off.
+    const looksTechnicalOrQuestion = /\?|setup|audit|equipment|compliance|dosage|install|configure|issue|error|broken|not working/i.test(
+      message
+    );
+    const fallbackBody = looksTechnicalOrQuestion
+      ? "Got your message — I don't want to guess on the technical specifics here, so I've flagged this for the team to follow up directly with you on the details."
+      : 'Understood. Let me know how you would like to proceed.';
+
+    const body = capLength(fallbackBody);
+    await store.addMessage(conversationId, session.sendAs, body);
+
     return {
       action: 'send',
-      body: 'Understood. Let me know how you would like to proceed.',
-      rationale: 'Fallback: default reply response.',
+      body,
+      rationale: 'Fallback: LLM call failed; used content-aware default instead of blind acknowledgement.',
     };
   }
 }
