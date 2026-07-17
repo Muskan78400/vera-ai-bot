@@ -189,7 +189,7 @@ app.post('/v1/reply', async (req, res) => {
   });
 
   try {
-    const response = await handleReply(conversation_id, merchant_id, customer_id, message, turn_number);
+    const response = await handleReply(conversation_id, merchant_id, customer_id, from_role, message, turn_number);
 
     addLog('info', `Formulated response to turn ${turn_number}`, response);
     res.json(response);

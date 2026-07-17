@@ -9,7 +9,10 @@ const config = {
   llmProvider: process.env.LLM_PROVIDER || 'gemini',
   gemini: {
     apiKey: process.env.GEMINI_API_KEY || '',
-    model: process.env.GEMINI_MODEL || 'gemini-1.5-flash',
+    // gemini-1.5-flash was fully shut down by Google (404s on every call) —
+    // gemini-2.5-flash is the current stable default. Override via
+    // GEMINI_MODEL if you want to move to gemini-3.5-flash etc.
+    model: process.env.GEMINI_MODEL || 'gemini-2.5-flash',
   },
   openai: {
     apiKey: process.env.OPENAI_API_KEY || '',
